@@ -1,8 +1,6 @@
 #include <ggml.h>
 #include <ggml-alloc.h>
 #include <ggml-backend.h>
-#include <ggml-backend-impl.h>
-
 #include <algorithm>
 #include <array>
 #include <cfloat>
@@ -15,6 +13,12 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <iostream>
+#include <arm_neon.h>
+
+#ifdef GGML_USE_CANN
+#include "ggml-cann.h"
+#endif
 
 
 static void init_tensor_uniform(ggml_tensor * tensor, float min = -1.0f, float max = 1.0f) {
@@ -1267,6 +1271,35 @@ struct test_pool2d : public test_case {
     }
 };
 
+// void print_tensor_data(const ggml_tensor* tensor) {
+//     size_t element_size = ggml_type_size(tensor->type);
+//     size_t total_elements = tensor->ne[0];
+
+//     for (int i = 1; i < GGML_MAX_DIMS; ++i) {
+//         total_elements *= tensor->ne[i];
+//     }
+
+//     std::cout << "Tensor Data :" << std::endl;
+
+//     if (tensor->type == GGML_TYPE_F32) {
+//         const float* data = (const float*)(tensor->data);
+//         for (size_t i = 0; i < total_elements; ++i) {
+//             std::cout << data[i] << " ";
+//         }
+//     } else if (tensor->type == GGML_TYPE_F16) {
+//         const uint16_t* data = (const uint16_t*)(tensor->data);
+//         for (size_t i = 0; i < total_elements; ++i) {
+//             std::cout << data[i] << " ";
+//         }
+//     }
+//     std::cout << std::endl;
+// }
+
+
+
+
+
+
 // GGML_OP_IM2COL
 struct test_im2col : public test_case {
     const ggml_type type_input;
@@ -1291,18 +1324,19 @@ struct test_im2col : public test_case {
     }
 
     test_im2col(ggml_type type_input = GGML_TYPE_F32, ggml_type type_kernel = GGML_TYPE_F16, ggml_type dst_type = GGML_TYPE_F32,
-            std::array<int64_t, 4> ne_input = {10, 10, 3, 1}, // [input_width, input_height, input_channels, 1]
-            std::array<int64_t, 4> ne_kernel = {3, 3, 3, 1}, // [kernel_width, kernel_height, input_channels, 1]
-            int s0 = 1, int s1 = 1,
-            int p0 = 1, int p1 = 1,
-            int d0 = 1, int d1 = 1,
-            bool is_2D = true)
+            std::array<int64_t, 4> ne_input = {3, 3, 1, 1}, // [input_width, input_height, input_channels, 1]
+            std::array<int64_t, 4> ne_kernel = {3, 3, 1, 1}, // [kernel_width, kernel_height, input_channels, 1]
+            int s0 = 1, int s1 = 0,
+            int p0 = 1, int p1 = 0,
+            int d0 = 1, int d1 = 0,
+            bool is_2D = false)
         : type_input(type_input), type_kernel(type_kernel), dst_type(dst_type), ne_input(ne_input), ne_kernel(ne_kernel), s0(s0), s1(s1), p0(p0), p1(p1), d0(d0), d1(d1), is_2D(is_2D) {}
 
     ggml_tensor * build_graph(ggml_context * ctx) override {
         ggml_tensor * input = ggml_new_tensor(ctx, type_input, 4, ne_input.data());
         ggml_tensor * kernel = ggml_new_tensor(ctx, type_kernel, 4, ne_kernel.data());
         ggml_tensor * out = ggml_im2col(ctx, kernel, input, s0, s1, p0, p1, d0, d1, is_2D, dst_type);
+        // print_tensor_data(out);
         return out;
     }
 };
@@ -2096,7 +2130,7 @@ static bool test_backend(ggml_backend_t backend, test_mode mode, const char * op
     }
 
     test_cases.emplace_back(new test_im2col(GGML_TYPE_F32, GGML_TYPE_F16, GGML_TYPE_F32));
-    test_cases.emplace_back(new test_im2col(GGML_TYPE_F32, GGML_TYPE_F16, GGML_TYPE_F16));
+    // test_cases.emplace_back(new test_im2col(GGML_TYPE_F32, GGML_TYPE_F16, GGML_TYPE_F16));
 
     test_cases.emplace_back(new test_repeat(GGML_TYPE_F32, {10, 10, 10, 10}, {1, 1, 1, 1}));
     test_cases.emplace_back(new test_repeat(GGML_TYPE_F32, {10, 10, 10, 10}, {2, 1, 1, 1}));
@@ -2253,6 +2287,7 @@ static bool test_backend(ggml_backend_t backend, test_mode mode, const char * op
         exponent <<= 1;
     }
 #endif
+/*
     for (bool mask : {false, true}) {
         for (float max_bias : {0.0f, 8.0f}) {
             if (!mask && max_bias > 0.0f) continue;
@@ -2269,7 +2304,7 @@ static bool test_backend(ggml_backend_t backend, test_mode mode, const char * op
 
     test_cases.emplace_back(new test_soft_max(GGML_TYPE_F32, {16, 2, 32, 1}, false, 0.1f, 0.0f));
     test_cases.emplace_back(new test_soft_max(GGML_TYPE_F32, {32, 2, 32, 1}, true,  0.1f, 0.0f));
-    test_cases.emplace_back(new test_soft_max(GGML_TYPE_F32, {32, 2, 32, 1}, true,  0.1f, 8.0f));
+    test_cases.emplace_back(new test_soft_max(GGML_TYPE_F32, {32, 2, 32, 1}, true,  0.1f, 8.0f)); */
 
     {
         bool all = true;

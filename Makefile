@@ -4,7 +4,7 @@ BUILD_TARGETS = \
 	bench \
 	quantize \
 	server \
-	tests/test-c.o
+	tests/test-backend-ops
 
 # Binaries only useful for tests
 TEST_TARGETS = \

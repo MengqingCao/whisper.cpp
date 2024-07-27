@@ -430,6 +430,14 @@ extern "C" {
     enum ggml_op {
         GGML_OP_NONE = 0,
 
+
+
+
+
+
+
+
+
         GGML_OP_DUP,
         GGML_OP_ADD,
         GGML_OP_ADD1,
@@ -452,11 +460,9 @@ extern "C" {
         GGML_OP_RMS_NORM,
         GGML_OP_RMS_NORM_BACK,
         GGML_OP_GROUP_NORM,
-
         GGML_OP_MUL_MAT,
         GGML_OP_MUL_MAT_ID,
         GGML_OP_OUT_PROD,
-
         GGML_OP_SCALE,
         GGML_OP_SET,
         GGML_OP_CPY,
@@ -486,7 +492,6 @@ extern "C" {
         GGML_OP_TIMESTEP_EMBEDDING,
         GGML_OP_ARGSORT,
         GGML_OP_LEAKY_RELU,
-
         GGML_OP_FLASH_ATTN_EXT,
         GGML_OP_FLASH_ATTN_BACK,
         GGML_OP_SSM_CONV,
@@ -495,7 +500,6 @@ extern "C" {
         GGML_OP_WIN_UNPART,
         GGML_OP_GET_REL_POS,
         GGML_OP_ADD_REL_POS,
-
         GGML_OP_UNARY,
 
         GGML_OP_MAP_UNARY,
@@ -747,6 +751,7 @@ extern "C" {
     GGML_API bool ggml_are_same_shape (const struct ggml_tensor * t0, const struct ggml_tensor * t1);
     GGML_API bool ggml_are_same_stride(const struct ggml_tensor * t0, const struct ggml_tensor * t1);
 
+    GGML_API bool ggml_can_repeat(const struct ggml_tensor * t0, const struct ggml_tensor * t1);
     // use this to compute the memory overhead of a tensor
     GGML_API size_t ggml_tensor_overhead(void);
 
@@ -2391,6 +2396,7 @@ extern "C" {
     GGML_API int ggml_cpu_has_rpc        (void);
     GGML_API int ggml_cpu_has_vsx        (void);
     GGML_API int ggml_cpu_has_matmul_int8(void);
+    GGML_API int ggml_cpu_has_cann       (void);
 
     //
     // Internal types and functions exposed for tests and benchmarks

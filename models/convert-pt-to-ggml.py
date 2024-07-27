@@ -200,6 +200,8 @@ dir_out     = Path(sys.argv[3])
 
 # try to load PyTorch binary data
 try:
+    print("fname_inp: ", fname_inp)
+    
     model_bytes = open(fname_inp, "rb").read()
     with io.BytesIO(model_bytes) as fp:
         checkpoint = torch.load(fp, map_location="cpu")
@@ -307,18 +309,18 @@ for name in list_vars.keys():
     # so we need to convert the small tensors to f32 until we fully support f16 in ggml
     # ftype == 0 -> float32, ftype == 1 -> float16
     ftype = 1
-    if use_f16:
-        if n_dims < 2 or \
-                name == "encoder.conv1.bias"   or \
-                name == "encoder.conv2.bias"   or \
-                name == "encoder.positional_embedding" or \
-                name == "decoder.positional_embedding":
-            print("  Converting to float32")
-            data = data.astype(np.float32)
-            ftype = 0
-    else:
-        data = data.astype(np.float32)
-        ftype = 0
+    # if use_f16:
+    #     if n_dims < 2 or \
+    #             name == "encoder.conv1.bias"   or \
+    #             name == "encoder.conv2.bias"   or \
+    #             name == "encoder.positional_embedding" or \
+    #             name == "decoder.positional_embedding":
+    #         print("  Converting to float32")
+    #         data = data.astype(np.float32)
+    #         ftype = 0
+    # else:
+    #     data = data.astype(np.float32)
+    #     ftype = 0
 
     #if name.startswith("encoder"):
     #    if name.endswith("mlp.0.weight") or \

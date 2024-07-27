@@ -445,6 +445,11 @@ GGML_CALL static void ggml_backend_registry_init(void) {
     extern GGML_CALL void ggml_backend_kompute_reg_devices(void);
     ggml_backend_kompute_reg_devices();
 #endif
+
+#ifdef GGML_USE_CANN
+    extern GGML_CALL int ggml_backend_cann_reg_devices(void);
+    ggml_backend_cann_reg_devices();
+#endif
 }
 
 GGML_CALL void ggml_backend_register(const char * name, ggml_backend_init_fn init_fn, ggml_backend_buffer_type_t default_buffer_type, void * user_data) {
@@ -792,7 +797,7 @@ GGML_CALL static enum ggml_status ggml_backend_cpu_graph_plan_compute(ggml_backe
 GGML_CALL static enum ggml_status ggml_backend_cpu_graph_compute(ggml_backend_t backend, struct ggml_cgraph * cgraph) {
     struct ggml_backend_cpu_context * cpu_ctx = (struct ggml_backend_cpu_context *)backend->context;
 
-    struct ggml_cplan cplan = ggml_graph_plan(cgraph, cpu_ctx->n_threads);
+    struct ggml_cplan cplan = ggml_graph_plan(cgraph, 1);
 
     if (cpu_ctx->work_size < cplan.work_size) {
         free(cpu_ctx->work_data);

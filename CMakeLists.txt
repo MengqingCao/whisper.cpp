@@ -70,7 +70,7 @@ option(WHISPER_SANITIZE_ADDRESS   "whisper: enable address sanitizer"   OFF)
 option(WHISPER_SANITIZE_UNDEFINED "whisper: enable undefined sanitizer" OFF)
 
 # extra artifacts
-option(WHISPER_BUILD_TESTS    "whisper: build tests"          ${WHISPER_STANDALONE})
+option(WHISPER_BUILD_TESTS    "whisper: build tests"          on)
 option(WHISPER_BUILD_EXAMPLES "whisper: build examples"       ${WHISPER_STANDALONE})
 option(WHISPER_BUILD_SERVER   "whisper: build server example" ${WHISPER_STANDALONE})
 
@@ -115,6 +115,7 @@ whisper_option_depr(WARNING     WHISPER_OPENMP              GGML_OPENMP)
 whisper_option_depr(WARNING     WHISPER_RPC                 GGML_RPC)
 whisper_option_depr(WARNING     WHISPER_SYCL                GGML_SYCL)
 whisper_option_depr(WARNING     WHISPER_SYCL_F16            GGML_SYCL_F16)
+whisper_option_depr(WARNING     WHISPER_CANN                GGML_CANN)
 
 #
 # build the library
@@ -175,9 +176,9 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/whisper.pc"
 # programs, examples and tests
 #
 
-if (WHISPER_BUILD_TESTS AND NOT CMAKE_JS_VERSION)
-    #include(CTest)
-    #add_subdirectory(tests)
+if (WHISPER_BUILD_TESTS)
+    include(CTest)
+    add_subdirectory(tests)
 endif ()
 
 if (WHISPER_BUILD_EXAMPLES)

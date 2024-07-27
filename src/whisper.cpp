@@ -1,4 +1,5 @@
 #include "whisper.h"
+#include <iostream>
 
 #ifdef WHISPER_USE_COREML
 #include "coreml/whisper-encoder.h"
@@ -23,6 +24,10 @@
 
 #ifdef GGML_USE_BLAS
 #include "ggml-blas.h"
+#endif
+
+#ifdef GGML_USE_CANN
+#include "ggml-cann.h"
 #endif
 
 #ifdef WHISPER_USE_OPENVINO
@@ -1283,6 +1288,16 @@ static ggml_backend_t whisper_backend_init_gpu(const whisper_context_params & pa
     }
 #endif
 
+#ifdef GGML_USE_CANN
+    if (params.use_gpu) {
+        WHISPER_LOG_INFO("%s: using CANN backend\n", __func__);
+        result = ggml_backend_cann_init(params.gpu_device);
+        if (!result) {
+            WHISPER_LOG_ERROR("%s: ggml_backend_cann_init() failed\n", __func__);
+        }
+    }
+#endif
+
     return result;
 }
 
@@ -1294,6 +1309,7 @@ static std::vector<ggml_backend_t> whisper_backend_init(const whisper_context_pa
     if (backend_gpu) {
         result.push_back(backend_gpu);
     }
+    std::cout << "**************************\n" << backend_gpu << "**************************\n";
 
 #ifdef GGML_USE_BLAS
     {
@@ -1333,6 +1349,10 @@ static ggml_backend_buffer_type_t whisper_default_buffer_type(const whisper_cont
 
 #ifdef GGML_USE_VULKAN
     result || (result = ggml_backend_vk_buffer_type(params.gpu_device));
+#endif
+
+#ifdef GGML_USE_CANN
+    result || (result == ggml_backend_cann_buffer_type(params.gpu_device));
 #endif
 
     result || (result = ggml_backend_cpu_buffer_type());
@@ -1543,8 +1563,10 @@ static bool whisper_model_load(struct whisper_model_loader * loader, whisper_con
         WHISPER_LOG_INFO("%s: n_langs       = %d\n", __func__, vocab.num_languages());
     }
 
-    const ggml_type wtype = wctx.wtype;
-    const ggml_type vtype = wctx.wtype == GGML_TYPE_F32 ? GGML_TYPE_F32 : GGML_TYPE_F16; // conv type
+    // const ggml_type wtype = wctx.wtype;
+    // const ggml_type vtype = wctx.wtype == GGML_TYPE_F32 ? GGML_TYPE_F32 : GGML_TYPE_F16; // conv type
+    const ggml_type wtype = GGML_TYPE_F16;
+    const ggml_type vtype = GGML_TYPE_F16; // conv type
 
     // create the ggml context
     {
@@ -1591,16 +1613,16 @@ static bool whisper_model_load(struct whisper_model_loader * loader, whisper_con
 
         // encoder
         {
-            model.e_pe = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, n_audio_state, n_audio_ctx);
+            model.e_pe = ggml_new_tensor_2d(ctx, GGML_TYPE_F16, n_audio_state, n_audio_ctx);
 
             model.e_conv_1_w     = ggml_new_tensor_3d(ctx, vtype,         3, n_mels,     n_audio_state);
-            model.e_conv_1_b     = ggml_new_tensor_2d(ctx, GGML_TYPE_F32,         1,     n_audio_state);
+            model.e_conv_1_b     = ggml_new_tensor_2d(ctx, GGML_TYPE_F16,         1,     n_audio_state);
 
             model.e_conv_2_w     = ggml_new_tensor_3d(ctx, vtype,         3, n_audio_state, n_audio_state);
-            model.e_conv_2_b     = ggml_new_tensor_2d(ctx, GGML_TYPE_F32,                1, n_audio_state);
+            model.e_conv_2_b     = ggml_new_tensor_2d(ctx, GGML_TYPE_F16,                1, n_audio_state);
 
-            model.e_ln_w = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_audio_state);
-            model.e_ln_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_audio_state);
+            model.e_ln_w = ggml_new_tensor_1d(ctx, GGML_TYPE_F16, n_audio_state);
+            model.e_ln_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F16, n_audio_state);
 
             // map by name
             model.tensors["encoder.positional_embedding"] = model.e_pe;
@@ -1617,28 +1639,28 @@ static bool whisper_model_load(struct whisper_model_loader * loader, whisper_con
             for (int i = 0; i < n_audio_layer; ++i) {
                 auto & layer = model.layers_encoder[i];
 
-                layer.mlp_ln_w    = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_audio_state);
-                layer.mlp_ln_b    = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_audio_state);
+                layer.mlp_ln_w    = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_audio_state);
+                layer.mlp_ln_b    = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_audio_state);
 
                 layer.mlp_0_w     = ggml_new_tensor_2d(ctx, wtype,           n_audio_state, 4*n_audio_state);
-                layer.mlp_0_b     = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, 4*n_audio_state);
+                layer.mlp_0_b     = ggml_new_tensor_1d(ctx, GGML_TYPE_F16, 4*n_audio_state);
 
                 layer.mlp_1_w     = ggml_new_tensor_2d(ctx, wtype,         4*n_audio_state, n_audio_state);
-                layer.mlp_1_b     = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_audio_state);
+                layer.mlp_1_b     = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_audio_state);
 
-                layer.attn_ln_0_w = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_audio_state);
-                layer.attn_ln_0_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_audio_state);
+                layer.attn_ln_0_w = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_audio_state);
+                layer.attn_ln_0_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_audio_state);
 
                 layer.attn_q_w    = ggml_new_tensor_2d(ctx, wtype,           n_audio_state, n_audio_state);
-                layer.attn_q_b    = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_audio_state);
+                layer.attn_q_b    = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_audio_state);
 
                 layer.attn_k_w    = ggml_new_tensor_2d(ctx, wtype,           n_audio_state, n_audio_state);
 
                 layer.attn_v_w    = ggml_new_tensor_2d(ctx, wtype,           n_audio_state, n_audio_state);
-                layer.attn_v_b    = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_audio_state);
+                layer.attn_v_b    = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_audio_state);
 
                 layer.attn_ln_1_w = ggml_new_tensor_2d(ctx, wtype,           n_audio_state, n_audio_state);
-                layer.attn_ln_1_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_audio_state);
+                layer.attn_ln_1_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_audio_state);
 
                 // map by name
                 model.tensors["encoder.blocks." + std::to_string(i) + ".mlp_ln.weight"]     = layer.mlp_ln_w;
@@ -1668,12 +1690,12 @@ static bool whisper_model_load(struct whisper_model_loader * loader, whisper_con
 
         // decoder
         {
-            model.d_pe   = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, n_text_state, n_text_ctx);
+            model.d_pe   = ggml_new_tensor_2d(ctx, GGML_TYPE_F16, n_text_state, n_text_ctx);
 
             model.d_te   = ggml_new_tensor_2d(ctx, wtype,         n_text_state, n_vocab);
 
-            model.d_ln_w = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_text_state);
-            model.d_ln_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n_text_state);
+            model.d_ln_w = ggml_new_tensor_1d(ctx, GGML_TYPE_F16, n_text_state);
+            model.d_ln_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F16, n_text_state);
 
             // map by name
             model.tensors["decoder.positional_embedding"]   = model.d_pe;
@@ -1686,42 +1708,42 @@ static bool whisper_model_load(struct whisper_model_loader * loader, whisper_con
             for (int i = 0; i < n_text_layer; ++i) {
                 auto & layer = model.layers_decoder[i];
 
-                layer.mlp_ln_w          = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
-                layer.mlp_ln_b          = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
+                layer.mlp_ln_w          = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
+                layer.mlp_ln_b          = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
 
                 layer.mlp_0_w           = ggml_new_tensor_2d(ctx, wtype,           n_text_state, 4*n_text_state);
-                layer.mlp_0_b           = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, 4*n_text_state);
+                layer.mlp_0_b           = ggml_new_tensor_1d(ctx, GGML_TYPE_F16, 4*n_text_state);
 
                 layer.mlp_1_w           = ggml_new_tensor_2d(ctx, wtype,         4*n_text_state, n_text_state);
-                layer.mlp_1_b           = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
+                layer.mlp_1_b           = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
 
-                layer.attn_ln_0_w       = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
-                layer.attn_ln_0_b       = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
+                layer.attn_ln_0_w       = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
+                layer.attn_ln_0_b       = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
 
                 layer.attn_q_w          = ggml_new_tensor_2d(ctx, wtype,           n_text_state, n_text_state);
-                layer.attn_q_b          = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
+                layer.attn_q_b          = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
 
                 layer.attn_k_w          = ggml_new_tensor_2d(ctx, wtype,           n_text_state, n_text_state);
 
                 layer.attn_v_w          = ggml_new_tensor_2d(ctx, wtype,           n_text_state, n_text_state);
-                layer.attn_v_b          = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
+                layer.attn_v_b          = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
 
                 layer.attn_ln_1_w       = ggml_new_tensor_2d(ctx, wtype,           n_text_state, n_text_state);
-                layer.attn_ln_1_b       = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
+                layer.attn_ln_1_b       = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
 
-                layer.cross_attn_ln_0_w = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
-                layer.cross_attn_ln_0_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
+                layer.cross_attn_ln_0_w = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
+                layer.cross_attn_ln_0_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
 
                 layer.cross_attn_q_w    = ggml_new_tensor_2d(ctx, wtype,           n_text_state, n_text_state);
-                layer.cross_attn_q_b    = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
+                layer.cross_attn_q_b    = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
 
                 layer.cross_attn_k_w    = ggml_new_tensor_2d(ctx, wtype,           n_text_state, n_text_state);
 
                 layer.cross_attn_v_w    = ggml_new_tensor_2d(ctx, wtype,           n_text_state, n_text_state);
-                layer.cross_attn_v_b    = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
+                layer.cross_attn_v_b    = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
 
                 layer.cross_attn_ln_1_w = ggml_new_tensor_2d(ctx, wtype,           n_text_state, n_text_state);
-                layer.cross_attn_ln_1_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32,   n_text_state);
+                layer.cross_attn_ln_1_b = ggml_new_tensor_1d(ctx, GGML_TYPE_F16,   n_text_state);
 
                 // map by name
                 model.tensors["decoder.blocks." + std::to_string(i) + ".mlp_ln.weight"]           = layer.mlp_ln_w;
@@ -1829,6 +1851,8 @@ static bool whisper_model_load(struct whisper_model_loader * loader, whisper_con
 
             const size_t bpe = ggml_type_size(ggml_type(ttype));
 
+            // std::cout << "$$$$$$$$$$$$$$$$$$$$$ target dtype:  " << ttype << "\n";
+            // std::cout << "###################### tensor->type: " << tensor->type << "\n";
             if ((nelements*bpe)/ggml_blck_size(tensor->type) != ggml_nbytes(tensor)) {
                 WHISPER_LOG_ERROR("%s: tensor '%s' has wrong size in model file: got %zu, expected %zu\n",
                         __func__, name.data(), ggml_nbytes(tensor), nelements*bpe);
@@ -4333,6 +4357,7 @@ const char * whisper_print_system_info(void) {
     s += "SSSE3 = "     + std::to_string(ggml_cpu_has_ssse3())     + " | ";
     s += "VSX = "       + std::to_string(ggml_cpu_has_vsx())       + " | ";
     s += "CUDA = "      + std::to_string(ggml_cpu_has_cuda())      + " | ";
+    s += "CANN = "      + std::to_string(ggml_cpu_has_cann())      + " | ";
     s += "COREML = "    + std::to_string(whisper_has_coreml())     + " | ";
     s += "OPENVINO = "  + std::to_string(whisper_has_openvino())          ;
 

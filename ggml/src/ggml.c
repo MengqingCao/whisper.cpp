@@ -3289,7 +3289,7 @@ bool ggml_are_same_stride(const struct ggml_tensor * t0, const struct ggml_tenso
 }
 
 // check if t1 can be represented as a repeatition of t0
-static inline bool ggml_can_repeat(const struct ggml_tensor * t0, const struct ggml_tensor * t1) {
+bool ggml_can_repeat(const struct ggml_tensor * t0, const struct ggml_tensor * t1) {
     static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
 
     return ggml_is_empty(t0) ? ggml_is_empty(t1) :
@@ -14377,6 +14377,84 @@ static void ggml_compute_forward_im2col_f32(
 }
 
 
+
+// static void ggml_compute_forward_im2col_f16(
+//     // 1D version
+//         const struct ggml_compute_params * params,
+//               struct ggml_tensor * dst) {
+
+//     const struct ggml_tensor * src0 = dst->src[0];
+//     const struct ggml_tensor * src1 = dst->src[1];
+
+//     GGML_ASSERT(src0->type == GGML_TYPE_F16);
+//     GGML_ASSERT(src1->type == GGML_TYPE_F32);
+//     GGML_ASSERT( dst->type == GGML_TYPE_F16);
+
+//     GGML_TENSOR_BINARY_OP_LOCALS;
+
+//     const int32_t s0 = ((const int32_t *)(dst->op_params))[0];
+//     const int32_t s1 = ((const int32_t *)(dst->op_params))[1];
+//     const int32_t p0 = ((const int32_t *)(dst->op_params))[2];
+//     const int32_t p1 = ((const int32_t *)(dst->op_params))[3];
+//     const int32_t d0 = ((const int32_t *)(dst->op_params))[4];
+//     const int32_t d1 = ((const int32_t *)(dst->op_params))[5];
+//     const bool is_2D = ((const int32_t *)(dst->op_params))[6] == 1;
+
+//     const int ith = params->ith;
+//     const int nth = params->nth;
+
+//     const int64_t N  = ne12;
+//     const int64_t IC = ne11;
+//     const int64_t IH = 1;
+//     const int64_t IW = ne10;
+
+//     const int64_t KH = 1;
+//     const int64_t KW = ne00;
+
+//     const int64_t OH = 1;
+//     const int64_t OW = ne1;
+
+//     int ofs0 = nb12;
+//     int ofs1 = nb11;
+
+//     GGML_ASSERT(nb00 == sizeof(ggml_fp16_t));
+//     GGML_ASSERT(nb10 == sizeof(float));
+
+//     // im2col: [N, IC, IH, IW] => [N, OH, OW, IC*KH*KW]
+//     printf("[N, OH, OW, IC*KH*KW]:  %ld %ld %ld %ld \n", N, OH, OW, IC*KH*KW);
+
+//     {
+//         ggml_fp16_t * const wdata = (ggml_fp16_t *) dst->data;
+
+//         for (int64_t in = 0; in < N; in++) {
+//             for (int64_t ioh = 0; ioh < OH; ioh++) { // H 上不滑动
+//                 for (int64_t iow = 0; iow < OW; iow++) {
+//                     for (int64_t iic = ith; iic < IC; iic += nth) {
+
+//                         // micro kernel
+//                         ggml_fp16_t * dst_data = wdata + (in*OH*OW + ioh*OW + iow)*(IC*KH*KW); // [IC, KH, KW]
+//                         const float * const src_data = (float *)((char *) src1->data + in*ofs0 + iic*ofs1); // [IH, IW]
+
+//                         for (int64_t ikh = 0; ikh < KH; ikh++) {  // H 上不滑动
+//                             for (int64_t ikw = 0; ikw < KW; ikw++) {
+//                                 const int64_t iiw = iow*s0 + ikw*d0 - p0;
+//                                 const int64_t iih = ioh*s1 + ikh*d1 - p1;
+
+//                                 if (iih < 0 || iih >= IH || iiw < 0 || iiw >= IW) {
+//                                     dst_data[iic*(KH*KW) + ikh*KW + ikw] = 0;
+//                                 } else {
+//                                     dst_data[iic*(KH*KW) + ikh*KW + ikw] = GGML_FP32_TO_FP16(src_data[iih*IW + iiw]);
+//                                 }
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
+
+
 // src0: kernel [OC, IC, KH, KW]
 // src1: image [N, IC, IH, IW]
 // dst:  result [N, OH, OW, IC*KH*KW]
@@ -14422,6 +14500,8 @@ static void ggml_compute_forward_im2col_f16(
     GGML_ASSERT(nb10 == sizeof(float));
 
     // im2col: [N, IC, IH, IW] => [N, OH, OW, IC*KH*KW]
+    printf("[N, OH, OW, IC*KH*KW]:  %ld %ld %ld %ld \n", N, OH, OW, IC*KH*KW);
+
     {
         ggml_fp16_t * const wdata = (ggml_fp16_t *) dst->data;
 
@@ -14431,8 +14511,16 @@ static void ggml_compute_forward_im2col_f16(
                     for (int64_t iic = ith; iic < IC; iic += nth) {
 
                         // micro kernel
+                        // in*OH*OW      : 按照输出的大小，一个 batch 的元素个数
+                        // ioh*OW + iow  : 按照输出的大小，当前所处位置 上的元素编号
+                        // IC*KH*KW      : 按照 kernel 的大小，所有元素的个数
                         ggml_fp16_t * dst_data = wdata + (in*OH*OW + ioh*OW + iow)*(IC*KH*KW); // [IC, KH, KW]
+                        // src0: kernel [OC, IC, KH, KW]
+                        // src1: image [N, IC, IH, IW]
+                        // dst:  result [N, OH, OW, IC*KH*KW]
+
                         const float * const src_data = (float *)((char *) src1->data + in*ofs0 + iic*ofs1); // [IH, IW]
+                        // printf("src_data : %d \n", *(src_data));
 
                         for (int64_t ikh = 0; ikh < KH; ikh++) {  // 1
                             for (int64_t ikw = 0; ikw < KW; ikw++) {
@@ -14444,6 +14532,8 @@ static void ggml_compute_forward_im2col_f16(
                                 } else {
                                     dst_data[iic*(KH*KW) + ikh*KW + ikw] = GGML_FP32_TO_FP16(src_data[iih*IW + iiw]);
                                 }
+                                // printf("iic*(KH*KW) + ikh*KW + ikw : %d, dst_data[iic*(KH*KW) + ikh*KW + ikw] : %d \n", iic*(KH*KW) + ikh*KW + ikw, dst_data[iic*(KH*KW) + ikh*KW + ikw]);
+
                             }
                         }
                     }
@@ -16819,6 +16909,32 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
                 GGML_ASSERT(false);
             } break;
     }
+
+    // cout cpu result
+    if (tensor->type==GGML_TYPE_F32) {
+        printf("node->op: %d", tensor->op);
+        printf("\n--------CPU------------Output(fp32)\n");
+        float * output = tensor->data;
+        size_t n_elem = 100;
+        for(int i = 0;i<n_elem;i++) {
+            printf("%f,", output[i]);
+        }
+        printf("\n");
+        
+    } else if (tensor->type==GGML_TYPE_F16) {
+        printf("node->op: %d", tensor->op);
+        printf("\n--------CPU------------Output(fp16)\n");
+        size_t n_elem = 100;
+        float* output = malloc(sizeof(float)*n_elem);
+        int16_t * tmp = tensor->data;
+        for(int i = 0;i<n_elem;i++) {
+            output[i] = GGML_FP16_TO_FP32(tmp[i]);
+            printf("%f,", output[i]);
+        }
+        free(output);
+        printf("\n");
+    }
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -18665,6 +18781,32 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
 
         ggml_compute_forward(&params, node);
 
+        // // cout cpu result
+        // if (node->type==GGML_TYPE_F32) {
+        //     printf("node->op: %d", node->op);
+        //     printf("\n--------CPU------------Output(fp32)\n");
+        //     float * output = node->data;
+        //     size_t n_elem = 9;
+        //     for(int i = 0;i<n_elem;i++) {
+        //         printf("%f,", output[i]);
+        //     }
+        //     printf("\n");
+            
+        // } else if (node->type==GGML_TYPE_F16) {
+        //     printf("node->op: %d", node->op);
+        //     printf("\n--------CPU------------Output(fp16)\n");
+        //     size_t n_elem = 9;
+        //     float* output = malloc(sizeof(float)*n_elem);
+        //     int16_t * tmp = node->data;
+        //     for(int i = 0;i<n_elem;i++) {
+        //         output[i] = GGML_FP16_TO_FP32(tmp[i]);
+        //         printf("%f,", output[i]);
+        //     }
+        //     free(output);
+        //     printf("\n");
+        // }
+
+
         if (state->ith == 0 && cplan->abort_callback && cplan->abort_callback(cplan->abort_callback_data)) {
             state->shared->ec = GGML_STATUS_ABORTED;
         }
@@ -18674,6 +18816,9 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
         if (state->shared->ec != GGML_STATUS_SUCCESS) {
             break;
         }
+
+
+
     }
 
     return 0;
@@ -21848,6 +21993,14 @@ int ggml_cpu_has_sycl(void) {
 
 int ggml_cpu_has_rpc(void) {
 #if defined(GGML_USE_RPC)
+    return 1;
+#else
+    return 0;
+#endif
+}
+
+int ggml_cpu_has_cann(void) {
+#if defined(GGML_USE_CANN)
     return 1;
 #else
     return 0;

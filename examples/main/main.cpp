@@ -16,6 +16,10 @@
 #pragma warning(disable: 4244 4267) // possible loss of data
 #endif
 
+#ifdef GGML_USE_CANN
+#include "ggml-cann.h"
+#endif
+
 // helper function to replace substrings
 static void replace_all(std::string & s, const std::string & search, const std::string & replace) {
     for (size_t pos = 0; ; pos += replace.length()) {
@@ -74,7 +78,7 @@ struct whisper_params {
     std::string language  = "en";
     std::string prompt;
     std::string font_path = "/System/Library/Fonts/Supplemental/Courier New Bold.ttf";
-    std::string model     = "models/ggml-base.en.bin";
+    std::string model     = "models/modelscope-whisper-largev3/ggml-model.bin";
     std::string grammar;
     std::string grammar_rule;
 

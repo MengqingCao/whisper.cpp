@@ -29,6 +29,10 @@
 #  include "ggml-metal.h"
 #endif
 
+#ifdef GGML_USE_CANN
+#  include "ggml-cann.h"
+#endif
+
 // TODO: replace with ggml API call
 #define QK_K 256
 
@@ -2823,6 +2827,8 @@ static size_t llama_get_device_count(const llama_model & model) {
     count = ggml_backend_sycl_get_device_count();
 #elif defined(GGML_USE_VULKAN)
     count = ggml_backend_vk_get_device_count();
+#elif defined(GGML_USE_CANN)
+    count = ggml_backend_cann_get_Device_count();
 #endif
 #if defined(GGML_USE_RPC)
     count += model.rpc_servers.size();
@@ -19136,6 +19142,28 @@ struct llama_context * llama_new_context_with_model(
                 ctx->backends.push_back(backend);
             }
         }
+elif defined(GGML_USE_CANN)
+        if (model->split_mode == LLAMA_SPLIT_MODE_NONE || model->split_mode == LLAMA_SPLIT_MODE_ROW) {
+            // with split_mode LLAMA_SPLIT_MODE_NONE or LLAMA_SPLIT_MODE_ROW, only the main GPU backend is used
+            ggml_backend_t backend = ggml_backend_cann_init(model->main_gpu);
+            if (backend == nullptr) {
+                LLAMA_LOG_ERROR("%s: failed to initialize CUDA%d backend\n", __func__, model->main_gpu);
+                llama_free(ctx);
+                return nullptr;
+            }
+            ctx->backends.push_back(backend);
+        } else {
+            // LLAMA_SPLIT_MODE_LAYER requires a backend for each GPU
+            for (int device = 0; device < ggml_backend_cann_get_device_count(); ++device) {
+                ggml_backend_t backend = ggml_backend_cann_init(device);
+                if (backend == nullptr) {
+                    LLAMA_LOG_ERROR("%s: failed to initialize CANN%d backend\n", __func__, device);
+                    llama_free(ctx);
+                    return nullptr;
+                }
+                ctx->backends.push_back(backend);
+            }
+        } 
 #elif defined(GGML_USE_KOMPUTE)
         if (model->n_gpu_layers > 0) {
             auto * backend = ggml_backend_kompute_init(model->main_gpu);

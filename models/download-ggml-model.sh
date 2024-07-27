@@ -6,7 +6,7 @@
 #src="https://ggml.ggerganov.com"
 #pfx="ggml-model-whisper"
 
-src="https://huggingface.co/ggerganov/whisper.cpp"
+src="https://hf-mirror.com/ggerganov/whisper.cpp"
 pfx="resolve/main/ggml"
 
 BOLD="\033[1m"
@@ -23,6 +23,7 @@ get_script_path() {
 }
 
 models_path="${2:-$(get_script_path)}"
+echo $models_path
 
 # Whisper models
 models="tiny
@@ -84,7 +85,7 @@ fi
 
 # check if model contains `tdrz` and update the src and pfx accordingly
 if echo "$model" | grep -q "tdrz"; then
-    src="https://huggingface.co/akashmjn/tinydiarize-whisper.cpp"
+    src="https://hf-mirror.com/akashmjn/tinydiarize-whisper.cpp"
     pfx="resolve/main/ggml"
 fi
 

@@ -16584,6 +16584,40 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
         return;
     }
 
+    // cout cpu input
+    if (tensor->src[1]->type==GGML_TYPE_F32) {
+        printf("node->op: %d", tensor->src[1]->op);
+        printf("\n--------------------------------CPU----------------------------Input(fp32)\n");
+        float * input = tensor->src[1]->data;
+        size_t n_elem = 100;
+        for(int i = 0;i<n_elem;i++) {
+            printf("%f,", input[i]);
+            if ((i+1)% 9 == 0)
+            {
+                printf("\n");
+            }
+        }
+        // free(input);
+        printf("\n");
+        
+    } else if (tensor->src[1]->type==GGML_TYPE_F16) {
+        printf("node->op: %d", tensor->src[1]->op);
+        printf("\n--------------------------------CPU----------------------------Input(fp16)\n");
+        size_t n_elem = 100;
+        float* input = malloc(sizeof(float)*n_elem);
+        int16_t * tmp = tensor->src[1]->data;
+        for(int i = 0;i<n_elem;i++) {
+            input[i] = GGML_FP16_TO_FP32(tmp[i]);
+            printf("%f,", input[i]);
+                if ((i+1)% 9 == 0)
+                {
+                    printf("\n");
+                }
+        }
+        free(input);
+        printf("\n");
+    }
+
     switch (tensor->op) {
         case GGML_OP_DUP:
             {
@@ -16918,6 +16952,10 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
         size_t n_elem = 100;
         for(int i = 0;i<n_elem;i++) {
             printf("%f,", output[i]);
+            if ((i+1)% 9 == 0)
+            {
+                printf("\n");
+            }
         }
         printf("\n");
         
@@ -16930,11 +16968,14 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
         for(int i = 0;i<n_elem;i++) {
             output[i] = GGML_FP16_TO_FP32(tmp[i]);
             printf("%f,", output[i]);
+            if ((i+1)% 9 == 0)
+            {
+                printf("\n");
+            }
         }
         free(output);
         printf("\n");
     }
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////

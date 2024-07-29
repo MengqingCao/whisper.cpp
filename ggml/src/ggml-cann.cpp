@@ -1647,6 +1647,11 @@ GGML_CALL static enum ggml_status ggml_backend_cann_graph_compute(
             aclrtMemcpy(output, n_elem * sizeof(float), node->data, n_elem * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
             for(int i = 0; i<n_elem; i++) {
                 printf("%f,", output[i]);
+                if ((i+1)% 9 == 0)
+                {
+                    printf("\n");
+                }
+                
             }
             printf("\n");
         }
@@ -1661,6 +1666,10 @@ GGML_CALL static enum ggml_status ggml_backend_cann_graph_compute(
             for(int i = 0;i<n_elem;i++) {
                 output[i] = ggml_fp16_to_fp32(tmp[i]);
                 printf("%f,", output[i]);
+                if ((i+1)% 9 == 0)
+                {
+                    printf("\n");
+                }
             }
             printf("\n");
         }

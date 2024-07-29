@@ -1411,8 +1411,8 @@ void ggml_cann_im2col(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
 
     int64_t tmp_im2col_ne[] = {OW * OH, IC * KH * KW, N};
     if (!is_2D) {
-        // 一维的还 padding 补 0 的话，kernel 滑窗多 3 / s0 倍
-        tmp_im2col_ne[0] = OW * OH * 3 / s0;
+        // 一维的还 padding 补 0 的话，kernel 滑窗是原来的 3 / s0 倍
+        tmp_im2col_ne[0] = OW * OH * 3;
     }
     size_t tmp_im2col_nb[GGML_MAX_DIMS - 1];
 
@@ -1425,7 +1425,7 @@ void ggml_cann_im2col(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
     // If dst is f16, tmp_buffer is f32, we need alloc src.typesize *
     // dst.elemcount.
     ggml_cann_pool_alloc im2col_allocator(
-        ctx.pool(), ggml_nelements(dst) * ggml_element_size(src1));
+        ctx.pool(), ggml_nelements(dst) * 3 * ggml_element_size(src1));
     void* tmp_im2col_buffer = im2col_allocator.get();
 
     aclTensor* tmp_im2col_tensor = ggml_cann_create_tensor(
@@ -1466,61 +1466,50 @@ void ggml_cann_im2col(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
     aclrtMemcpy(output, n_elem*sizeof(float), tmp_im2col_buffer, n_elem*sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
     for(int i = 0; i < n_elem; i++) {
         printf("%f,", output[i]);
+        if ((i+1)% 9 == 0)
+        {
+            printf("\n");
+        }
     }
     printf("**************************************\n");
 
     aclTensor* cut_tmp_im2col_tensor = nullptr;
     ggml_cann_pool_alloc cut_tmp_im2col_allocator(ctx.pool());
+    // // cut off the redundant parts included by padding and stride in height.
+    // alloc memeory
+    int n_bytes = ggml_nbytes(dst);
+    cut_tmp_im2col_allocator.alloc(n_bytes);
+    // get data ptr
+    void* cut_tmp_im2col_buffer = cut_tmp_im2col_allocator.get();
     if (!is_2D) {
-        // // cut off the redundant parts included by padding and stride in height.
-        // alloc memeory
-        int n_bytes = ggml_nbytes(dst);
-        cut_tmp_im2col_allocator.alloc(n_bytes);
-        // get data ptr
-        void* cut_tmp_im2col_buffer = cut_tmp_im2col_allocator.get();
-
-        // // int n_elements = OW * OH + IC * KH * KW + N;
-        // // int n_bytes = ggml_nbytes(dst);
-        // // addr offset: tmp_im2col_buffer + KH * KW * 3,
-        // // printf("ggml_nelements(dst) * ggml_type_size(src1->type): %ld, %ld, %ld \n", 
-        // //         ggml_nelements(dst) * ggml_type_size(src1->type),
-        // //         ggml_nelements(dst),
-        // //         ggml_type_size(src1->type));
-        std::cout << "ggml_nbytes(dst): " << ggml_nbytes(dst) << std::endl;
-        aclrtMemcpy(cut_tmp_im2col_buffer, n_bytes, tmp_im2col_buffer, n_bytes, ACL_MEMCPY_DEVICE_TO_DEVICE);
-
-
         // set ne and nb
         int64_t cut_tmp_im2col_ne[] = {OW * OH, IC * KH * KW, N};
-        // int64_t cut_tmp_im2col_ne[] = {N, IC * KH * KW, OW * OH};
-
-        
         size_t cut_tmp_im2col_nb[GGML_MAX_DIMS - 1];
         cut_tmp_im2col_nb[0] = ggml_type_size(src1->type);
-        // cut_tmp_im2col_nb[1] = ggml_type_size(src1->type);
-        // cut_tmp_im2col_nb[2] = ggml_type_size(src1->type) * 9;
 
         for (int i = 2; i < GGML_MAX_DIMS - 1; i++) {
             cut_tmp_im2col_nb[i] = cut_tmp_im2col_nb[i - 1] * cut_tmp_im2col_ne[i - 1];
         }
-        // cut_tmp_im2col_nb[GGML_MAX_DIMS - 2] = ggml_type_size(src1->type);
-        // for (int i = GGML_MAX_DIMS - 3; i > - 1; i--) {
-        //     cut_tmp_im2col_nb[i] = cut_tmp_im2col_nb[i + 1] * cut_tmp_im2col_ne[i + 1];
-        // }
-        // cut_tmp_im2col_nb[GGML_MAX_DIMS - 3] = cut_tmp_im2col_nb[GGML_MAX_DIMS - 2] * cut_tmp_im2col_ne[1];
-        // cut_tmp_im2col_nb[GGML_MAX_DIMS - 4] = cut_tmp_im2col_nb[GGML_MAX_DIMS - 3] * cut_tmp_im2col_ne[0];
-
         // create cann tensor
         cut_tmp_im2col_tensor = ggml_cann_create_tensor(
             cut_tmp_im2col_buffer, ggml_cann_type_mapping(src1->type),
             ggml_type_size(src1->type), cut_tmp_im2col_ne, cut_tmp_im2col_nb,
             GGML_MAX_DIMS - 1, ACL_FORMAT_ND);
 
+        aclrtMemcpy(cut_tmp_im2col_buffer, n_bytes, tmp_im2col_buffer + (IC * KH * KW * (ne10 + 2*p0 - KW + 1) / s0) * 4, n_bytes, ACL_MEMCPY_DEVICE_TO_DEVICE);
 
-
-        // for(int i = 0; i < n_bytes/4 ; i++) {
-        //     printf("%f,", output[i]);
-        // }
+        // cout cpy tensor
+        size_t n_elem = 100;
+        float * output1 = new float[n_elem];
+        aclrtMemcpy(output1, n_elem*sizeof(float), cut_tmp_im2col_buffer, n_elem*sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+        printf("*******************************************\n");
+        for(int i = 0; i < n_elem ; i++) {
+            printf("%f,", output1[i]);
+            if ((i+1)% 9 == 0)
+            {
+                printf("\n");
+            }
+        }
 
     }
 
@@ -1551,25 +1540,6 @@ void ggml_cann_im2col(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
             aclnn_cast(ctx, cut_tmp_im2col_tensor, tmp_cast_tensor,
                     ggml_cann_type_mapping(dst->type));
         }
-
-
-        // if (!is_2D) {
-        //     cut_tmp_im2col_allocator.alloc(ggml_nbytes(dst));
-        //     // cut off the redundant parts included by padding and stride in height.
-        //     int64_t cut_tmp_cast_ne[] = {OW * OH, IC * KH * KW, N};
-
-        //     size_t cut_tmp_cast_nb[GGML_MAX_DIMS - 1];
-        //     cut_tmp_cast_nb[0] = ggml_type_size(dst->type);
-        //     for (int i = 1; i < GGML_MAX_DIMS - 1; i++) {
-        //         cut_tmp_cast_nb[i] = cut_tmp_cast_nb[i - 1] * cut_tmp_cast_ne[i - 1];
-        //     }
-        //     //  + ne10 + 2*p0
-        //     cut_tmp_cast_tensor = ggml_cann_create_tensor(
-        //         tmp_cast_buffer, ggml_cann_type_mapping(dst->type), 
-        //         ggml_type_size(dst->type), 
-        //         cut_tmp_cast_ne, cut_tmp_cast_nb,
-        //         GGML_MAX_DIMS - 1, ACL_FORMAT_ND);
-        // }
     }
 
     // Permute: [N, IC * KH * KW, OW * OH] -> [N, OW * OH, IC * KH * KW]
@@ -1580,14 +1550,20 @@ void ggml_cann_im2col(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
 
     int64_t permute_dim[] = {0, 2, 1};
     if (src1->type != dst->type) {
-        aclnn_permute(ctx, tmp_cast_tensor, acl_dst, permute_dim, 3);
+        if (is_2D)
+        {
+            aclnn_permute(ctx, tmp_cast_tensor, acl_dst, permute_dim, 3);
+        } else {
+            size_t offset = (IC * KH * KW * (ne10 + 2*p0 - KW + 1) / s0) * ggml_type_size(dst->type);
+            aclrtMemcpy(dst->data, ggml_nbytes(dst), tmp_im2col_buffer + offset, ggml_nbytes(dst), ACL_MEMCPY_DEVICE_TO_DEVICE);
+        }
     } else {
         if (is_2D)
         {
             aclnn_permute(ctx, tmp_im2col_tensor, acl_dst, permute_dim, 3);
-        } else
-        {
-            aclnn_permute(ctx, cut_tmp_im2col_tensor, acl_dst, permute_dim, 3);
+        } else {
+            size_t offset = (IC * KH * KW * (ne10 + 2*p0 - KW + 1) / s0) * ggml_type_size(dst->type);
+            aclrtMemcpy(dst->data, ggml_nbytes(dst), tmp_im2col_buffer + offset, ggml_nbytes(dst), ACL_MEMCPY_DEVICE_TO_DEVICE);
         }
     }
 

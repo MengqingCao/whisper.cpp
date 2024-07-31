@@ -109,10 +109,10 @@ aclTensor* ggml_cann_create_tensor(void* data_ptr, aclDataType dtype,
         acl_storage_len += (ne[i] - 1) * nb[i];
     }
 
-    for (int i = 0; i < dims; i++) {
-        std::cout << "tmp_stride["<< i << "] ： " << tmp_stride[i] << " ";
-    }
-    std::cout << "\n*************************************************************\n";
+    // for (int i = 0; i < dims; i++) {
+    //     std::cout << "tmp_stride["<< i << "] ： " << tmp_stride[i] << " ";
+    // }
+    // std::cout << "\n*************************************************************\n";
     // for (int i = 0; i < dims; i++) {
     //     std::cout << "tmp_ne["<< i << "] ： " << tmp_ne[i] << " ";
     // }

@@ -1636,46 +1636,47 @@ GGML_CALL static enum ggml_status ggml_backend_cann_graph_compute(
             GGML_CANN_LOG_ERROR("%s: error: op not supported %s (%s)\n", __func__,
                     node->name, ggml_op_name(node->op));
         }
+        printf("node->op: %d", node->op);
 
-        // cout
-        if (node->type == GGML_TYPE_F32) {
-            printf("node->op: %d", node->op);
-            printf("\n--------NPU------------Output(fp32)\n");
-            // size_t n_elem = 512;
-            size_t n_elem = 100;
-            float * output = new float[n_elem];
-            aclrtMemcpy(output, n_elem * sizeof(float), node->data, n_elem * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
-            for(int i = 0; i<n_elem; i++) {
-                printf("%f,", output[i]);
-                if ((i+1)% 9 == 0)
-                {
-                    printf("\n");
-                }
+        // // cout NPU result
+        // if (node->type == GGML_TYPE_F32) {
+        //     printf("node->op: %d", node->op);
+        //     printf("\n--------NPU------------Output(fp32)\n");
+        //     // size_t n_elem = 512;
+        //     size_t n_elem = 100;
+        //     float * output = new float[n_elem];
+        //     aclrtMemcpy(output, n_elem * sizeof(float), node->data, n_elem * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+        //     for(int i = 0; i<n_elem; i++) {
+        //         printf("%f,", output[i]);
+        //         if ((i+1)% 9 == 0)
+        //         {
+        //             printf("\n");
+        //         }
                 
-            }
-            printf("\n");
-        }
-        else if (node->type == GGML_TYPE_F16) {
-            printf("node->op: %d", node->op);
-            printf("\n--------NPU------------Output(fp16)\n");
-            // size_t n_elem = 512;
-            size_t n_elem = 100;
-            int16_t* tmp = new int16_t[n_elem];
-            float * output = new float[n_elem];
-            aclrtMemcpy(tmp, n_elem * sizeof(int16_t), node->data, n_elem * sizeof(int16_t), ACL_MEMCPY_DEVICE_TO_HOST);
-            for(int i = 0;i<n_elem;i++) {
-                output[i] = ggml_fp16_to_fp32(tmp[i]);
-                printf("%f,", output[i]);
-                if ((i+1)% 9 == 0)
-                {
-                    printf("\n");
-                }
-            }
-            printf("\n");
-        }
-        else {
-            printf("\nOutput()\n");
-        }
+        //     }
+        //     printf("\n");
+        // }
+        // else if (node->type == GGML_TYPE_F16) {
+        //     printf("node->op: %d", node->op);
+        //     printf("\n--------NPU------------Output(fp16)\n");
+        //     // size_t n_elem = 512;
+        //     size_t n_elem = 100;
+        //     int16_t* tmp = new int16_t[n_elem];
+        //     float * output = new float[n_elem];
+        //     aclrtMemcpy(tmp, n_elem * sizeof(int16_t), node->data, n_elem * sizeof(int16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+        //     for(int i = 0;i<n_elem;i++) {
+        //         output[i] = ggml_fp16_to_fp32(tmp[i]);
+        //         printf("%f,", output[i]);
+        //         if ((i+1)% 9 == 0)
+        //         {
+        //             printf("\n");
+        //         }
+        //     }
+        //     printf("\n");
+        // }
+        // else {
+        //     printf("\nOutput()\n");
+        // }
 
         GGML_ASSERT(ok);
     }

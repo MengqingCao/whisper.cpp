@@ -14344,6 +14344,8 @@ static void ggml_compute_forward_im2col_f32(
 
     int ofs0 = is_2D ? nb13 : nb12;
     int ofs1 = is_2D ? nb12 : nb11;
+    // printf("\n ^^^^^^^^^^^^^^^^^^^^ ofs0(nb12): %ld elements: %d \n", nb12, nb12/ggml_type_size(GGML_TYPE_F32));
+    // printf("\n ^^^^^^^^^^^^^^^^^^^^ ofs1(nb11): %ld elements: %d \n", nb11, nb11/ggml_type_size(GGML_TYPE_F32));
 
     GGML_ASSERT(nb00 == sizeof(ggml_fp16_t));
     GGML_ASSERT(nb10 == sizeof(float));
@@ -14502,9 +14504,15 @@ static void ggml_compute_forward_im2col_f16(
 
     GGML_ASSERT(nb00 == sizeof(ggml_fp16_t));
     GGML_ASSERT(nb10 == sizeof(float));
+    // printf("\n ^^^^^^^^^^^^^^^^^^^^ ofs0(nb12): %ld elements: %d \n", nb12, nb12/ggml_type_size(GGML_TYPE_F32));
+    // printf("\n ^^^^^^^^^^^^^^^^^^^^ ofs1(nb11): %ld elements: %d \n", nb11, nb11/ggml_type_size(GGML_TYPE_F32));
+    // // im2col: [N, IC, IH, IW] => [N, OH, OW, IC*KH*KW]
+    // // printf("[N, OH, OW, IC*KH*KW]:  %ld %ld %ld %ld \n", N, OH, OW, IC*KH*KW);
+    // printf("[N, OH, OW, IC, KH, KW]:  %ld %ld %ld %ld %ld %ld \n", N, OH, OW, IC, KH, KW);
 
-    // im2col: [N, IC, IH, IW] => [N, OH, OW, IC*KH*KW]
-    printf("[N, OH, OW, IC*KH*KW]:  %ld %ld %ld %ld \n", N, OH, OW, IC*KH*KW);
+    // printf("kernel ne0:  %ld %ld %ld %ld \n", ne00, ne01, ne02, ne03);
+    // printf("input ne1:  %ld %ld %ld %ld \n", ne10, ne11, ne12, ne13);
+    // printf("s0, s1, p0, p1, d0, d1:  %ld %ld %ld %ld %ld %ld \n", s0, s1, p0, p1, d0, d1);
 
     {
         ggml_fp16_t * const wdata = (ggml_fp16_t *) dst->data;
@@ -14554,10 +14562,39 @@ static void ggml_compute_forward_im2col(
         case GGML_TYPE_F16:
             {
                 ggml_compute_forward_im2col_f16(params, dst);
+                // // cout cpu result
+                // printf("\n--------CPU------------Output(fp16)\n");
+                // size_t n_elem = 3840;
+                // float* output = malloc(sizeof(float)*n_elem);
+                // int16_t * tmp = dst->data;
+                // for(int i = 0;i<n_elem;i++) {
+                //     output[i] = GGML_FP16_TO_FP32(tmp[i]);
+                //     printf("%f,", output[i]);
+                //     if ((i+1) % 1280 == 0) {
+                //         printf("\n");
+                //     }
+                // }
+                // free(output);
+                // printf("\n");
             } break;
         case GGML_TYPE_F32:
             {
                 ggml_compute_forward_im2col_f32(params, dst);
+                // // cout cpu result
+                // printf("\n--------CPU------------Output(fp32)\n");
+                // size_t n_elem = 3840;
+                // float* output = malloc(sizeof(float)*n_elem);
+                // int16_t * tmp = dst->data;
+                // for(int i = 0;i<n_elem;i++) {
+                //     output[i] = tmp[i];
+                //     printf("%f,", output[i]);
+                //     if ((i+1) % 1280 == 0) {
+                //         printf("\n");
+                //     }
+                // }
+                // free(output);
+                // printf("\n");
+                
             } break;
         default:
             {
@@ -16593,10 +16630,10 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
     //     printf("node->op: %d", tensor->src[1]->op);
     //     printf("\n--------------------------------CPU----------------------------Input(fp32)\n");
     //     float * input = tensor->src[1]->data;
-    //     size_t n_elem = 100;
+    //     size_t n_elem = 3840;
     //     for(int i = 0;i<n_elem;i++) {
     //         printf("%f,", input[i]);
-    //         if ((i+1)% 9 == 0)
+    //         if ((i+1)% 1280 == 0)
     //         {
     //             printf("\n");
     //         }
@@ -16607,13 +16644,13 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
     // } else if (tensor->src[1]->type==GGML_TYPE_F16) {
     //     printf("node->op: %d", tensor->src[1]->op);
     //     printf("\n--------------------------------CPU----------------------------Input(fp16)\n");
-    //     size_t n_elem = 100;
+    //     size_t n_elem = 3840;
     //     float* input = malloc(sizeof(float)*n_elem);
     //     int16_t * tmp = tensor->src[1]->data;
     //     for(int i = 0;i<n_elem;i++) {
     //         input[i] = GGML_FP16_TO_FP32(tmp[i]);
     //         printf("%f,", input[i]);
-    //             if ((i+1)% 9 == 0)
+    //             if ((i+1)% 1280 == 0)
     //             {
     //                 printf("\n");
     //             }
@@ -16949,30 +16986,30 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
     }
 
     // // cout cpu result
-    // if (tensor->type==GGML_TYPE_F32) {
+    // if ( tensor->op== 45 && tensor->type==GGML_TYPE_F32) {
     //     printf("node->op: %d", tensor->op);
     //     printf("\n--------CPU------------Output(fp32)\n");
     //     float * output = tensor->data;
-    //     size_t n_elem = 100;
+    //     size_t n_elem = 3840;
     //     for(int i = 0;i<n_elem;i++) {
     //         printf("%f,", output[i]);
-    //         if ((i+1)% 9 == 0)
+    //         if ((i+1)% 1280 == 0)
     //         {
     //             printf("\n");
     //         }
     //     }
     //     printf("\n");
         
-    // } else if (tensor->type==GGML_TYPE_F16) {
+    // } else if ( tensor->op== 45 && tensor->type==GGML_TYPE_F16) {
     //     printf("node->op: %d", tensor->op);
     //     printf("\n--------CPU------------Output(fp16)\n");
-    //     size_t n_elem = 100;
+    //     size_t n_elem = 3840;
     //     float* output = malloc(sizeof(float)*n_elem);
     //     int16_t * tmp = tensor->data;
     //     for(int i = 0;i<n_elem;i++) {
     //         output[i] = GGML_FP16_TO_FP32(tmp[i]);
     //         printf("%f,", output[i]);
-    //         if ((i+1)% 9 == 0)
+    //         if ((i+1)% 1280 == 0)
     //         {
     //             printf("\n");
     //         }

@@ -1726,7 +1726,7 @@ static bool ggml_backend_sched_alloc_splits(ggml_backend_sched_t sched) {
             }
         }
     }
-
+    // printf("backend_ids_changed: %d \n", backend_ids_changed);
     // allocate graph
     if (backend_ids_changed || !ggml_gallocr_alloc_graph(sched->galloc, sched->graph)) {
         // the re-allocation may cause the split inputs to be moved to a different address

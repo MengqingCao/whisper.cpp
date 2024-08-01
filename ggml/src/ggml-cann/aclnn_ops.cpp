@@ -1315,6 +1315,25 @@ static void aclnn_permute(ggml_backend_cann_context& ctx, aclTensor* acl_src,
     ACL_CHECK(aclDestroyIntArray(acl_dims));
 }
 
+
+static void aclnn_inplaceCopy(ggml_backend_cann_context& ctx, aclTensor* acl_src, aclTensor* acl_dst) {
+    uint64_t inplaceCpyWorkspaceSize = 0;
+    aclOpExecutor* inplaceCpyExecutor;
+    void* inplaceCpyWorkspaceAddr = nullptr;
+    ACL_CHECK(aclnnInplaceCopyGetWorkspaceSize(acl_dst, acl_src, &inplaceCpyWorkspaceSize, &inplaceCpyExecutor));
+    // if (inplaceCpyWorkspaceSize > 0) {
+    //     aclrtMalloc(&inplaceCpyWorkspaceAddr, inplaceCpyWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    // }
+
+    ggml_cann_pool_alloc inplaceCpy_workspace_allocator(ctx.pool());
+    if (inplaceCpyWorkspaceSize > 0) {
+        inplaceCpy_workspace_allocator.alloc(inplaceCpyWorkspaceSize);
+        inplaceCpyWorkspaceAddr = inplaceCpy_workspace_allocator.get();
+    }
+
+    ACL_CHECK(aclnnInplaceCopy(inplaceCpyWorkspaceAddr, inplaceCpyWorkspaceSize, inplaceCpyExecutor, ctx.stream()));
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -1409,19 +1428,19 @@ void ggml_cann_im2col_2d(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
     ACL_CHECK(
         aclnnIm2col(workspaceAddr, workspaceSize, executor, ctx.stream()));
 
-    /* cout all results */ 
-    printf("\n********************************************************** NPU------------ aclnn Output(fp32)\n");
-    size_t n_elem = 25*9;
-    float * output = new float[n_elem];
-    aclrtMemcpy(output, n_elem*sizeof(float), tmp_im2col_buffer, n_elem*sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
-    for(int i = 0; i < n_elem; i++) {
-        printf("%f,", output[i]);
-        if ((i+1)% 9 == 0)
-        {
-            printf("\n");
-        }
-    }
-    printf("****************************************************************************\n");
+    // /* cout all results */ 
+    // printf("\n********************************************************** NPU------------ aclnn Output(fp32)\n");
+    // size_t n_elem = 25*9;
+    // float * output = new float[n_elem];
+    // aclrtMemcpy(output, n_elem*sizeof(float), tmp_im2col_buffer, n_elem*sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+    // for(int i = 0; i < n_elem; i++) {
+    //     printf("%f,", output[i]);
+    //     if ((i+1)% 1280 == 0)
+    //     {
+    //         printf("\n");
+    //     }
+    // }
+    // printf("****************************************************************************\n");
 
     // Cast if dst is f16.
     aclTensor* tmp_cast_tensor = nullptr;
@@ -1467,10 +1486,6 @@ void ggml_cann_im2col_2d(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
     ACL_CHECK(aclDestroyIntArray(strides));
 }
 
-
-static int64_t ggml_calc_conv_output_size(int64_t ins, int64_t ks, int s, int p, int d) {
-    return (ins + 2 * p - d * (ks - 1) - 1) / s + 1;
-}
 
 void ggml_cann_im2col_1d(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
     ggml_tensor* src0 = dst->src[0];  // kernel
@@ -1532,7 +1547,6 @@ void ggml_cann_im2col_1d(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
         GGML_MAX_DIMS - 1, ACL_FORMAT_ND);
 
     std::vector<int64_t> kernel_dims = {KH, KW};
-    // std::vector<int64_t> kernel_dims = {KW, KH};
     std::vector<int64_t> dilation_size = {d1, d0};
     std::vector<int64_t> padding_dims = {p1, p0};
     std::vector<int64_t> stride_dims = {s1, s0};
@@ -1550,8 +1564,9 @@ void ggml_cann_im2col_1d(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
                                           paddings, strides, tmp_im2col_tensor,
                                           &workspaceSize, &executor));
 
+    ggml_cann_pool_alloc workspace_allocator(ctx.pool());
     if (workspaceSize > 0) {
-        ggml_cann_pool_alloc workspace_allocator(ctx.pool(), workspaceSize);
+        workspace_allocator.alloc(workspaceSize);
         workspaceAddr = workspace_allocator.get();
     }
 
@@ -1568,7 +1583,7 @@ void ggml_cann_im2col_1d(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
     // aclrtMemcpy(output, n_elem*sizeof(float), tmp_im2col_buffer, n_elem*sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
     // for(int i = 0; i < n_elem; i++) {
     //     printf("%f,", output[i]);
-    //     if ((i+1)% 9 == 0)
+    //     if ((i+1)% 1280 == 0)
     //     {
     //         printf("\n");
     //     }
@@ -1603,7 +1618,7 @@ void ggml_cann_im2col_1d(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
     // aclrtMemcpy(output1, n_elem*sizeof(float), tmp_cast_buffer, n_elem*sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
     // for(int i = 0; i < n_elem; i++) {
     //     printf("%f,", output1[i]);
-    //     if ((i+1)% 9 == 0)
+    //     if ((i+1)% 1280 == 0)
     //     {
     //         printf("\n");
     //     }
@@ -1645,7 +1660,7 @@ void ggml_cann_im2col_1d(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
     // aclrtMemcpy(output2, n_elem*sizeof(float), tmp_permute_buffer, n_elem*sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
     // for(int i = 0; i < n_elem; i++) {
     //     printf("%f,", output2[i]);
-    //     if ((i+1)% 9 == 0)
+    //     if ((i+1)% 1280 == 0)
     //     {
     //         printf("\n");
     //     }
@@ -1665,6 +1680,7 @@ void ggml_cann_im2col_1d(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
             ggml_type_size(dst->type), dst_ne, dst_nb,
             GGML_MAX_DIMS - 1, ACL_FORMAT_ND);
     size_t offset;
+    void* cur_dst_buffer = dst->data, *cur_permute_buffer = tmp_permute_buffer + offset;
     // offset = IC * (KH * KW * ((ne10 + 2 * p0 - d0 * (KW - 1) - 1) / s0 + 1)) * ggml_type_size(dst->type);
     // aclrtMemcpy(acl_dst_buffer, ggml_nbytes(dst), tmp_permute_buffer + offset, ggml_nbytes(dst), ACL_MEMCPY_DEVICE_TO_DEVICE);
     if (IC > 1)
@@ -1672,7 +1688,6 @@ void ggml_cann_im2col_1d(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
         offset = IC * (KH * KW * ((ne10 + 2 * p0 - d0 * (KW - 1) - 1) / s0 + 1)) * ggml_type_size(dst->type);
         size_t size_cpy = KH * KW * ggml_type_size(dst->type);
         // aclrtMemcpy(acl_dst_buffer, size_cpy, tmp_permute_buffer + offset, size_cpy, ACL_MEMCPY_DEVICE_TO_DEVICE);
-        void* cur_dst_buffer = acl_dst_buffer, *cur_permute_buffer = tmp_permute_buffer + offset;
         for (size_t c = 0; c < IC; c++)
         {
             // cur_dst_buffer += c * ((ne10 + 2 * p0 - d0 * (KW - 1) - 1) / s0 + 1) * ggml_type_size(dst->type);
@@ -1680,57 +1695,69 @@ void ggml_cann_im2col_1d(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
             // std::cout << "((ne10 + 2 * p0 - d0 * (KW - 1) - 1) / s0 + 1): " << ((ne10 + 2 * p0 - d0 * (KW - 1) - 1) / s0 + 1) << "\n";
             // std::cout << "c * KH * KW: " << c * KH * KW << "\n";
             cur_permute_buffer = tmp_permute_buffer + offset + KH * KW * c * ggml_type_size(dst->type);
-            cur_dst_buffer = acl_dst_buffer + c * KH * KW * ((ne10 + 2 * p0 - d0 * (KW - 1) - 1) / s0 + 1) * ggml_type_size(dst->type);
+            cur_dst_buffer = dst->data + c * KH * KW * ((ne10 + 2 * p0 - d0 * (KW - 1) - 1) / s0 + 1) * ggml_type_size(dst->type);
 
             for (size_t i = 0; i < ((ne10 + 2 * p0 - d0 * (KW - 1) - 1) / s0 + 1); i++)
             {
-                aclrtMemcpy(cur_dst_buffer, size_cpy,
-                        cur_permute_buffer, size_cpy,
-                        ACL_MEMCPY_DEVICE_TO_DEVICE);
+                ACL_CHECK(aclrtMemcpyAsync(cur_dst_buffer, size_cpy, cur_permute_buffer,
+                                        size_cpy, ACL_MEMCPY_DEVICE_TO_DEVICE,
+                                        ctx.stream()));
                 cur_dst_buffer += KH * KW * ggml_type_size(dst->type);
                 cur_permute_buffer += KH * KW * IC * ggml_type_size(dst->type);
             }
         }
-        
-
-        // for (size_t i = 1; i < IC; i++)
-        // {
-        //     aclrtMemcpy(tmp_cur + i * IC * KH * KW * ggml_type_size(dst->type), size_cpy, 
-        //             tmp_permute_buffer + offset + i * KH * KW * IC * ggml_type_size(dst->type), size_cpy, 
-        //             ACL_MEMCPY_DEVICE_TO_DEVICE);
-        // }
     } else
     {
-        offset = (KH * KW * ((ne10 + 2 * p0 - d0 * (KW - 1) - 1) / s0 + 1)) * ggml_type_size(dst->type);
-        aclrtMemcpy(acl_dst_buffer, ggml_nbytes(dst), tmp_permute_buffer + offset, ggml_nbytes(dst), ACL_MEMCPY_DEVICE_TO_DEVICE);
+        // offset = (KH * KW * ((ne10 + 2 * p0 - d0 * (KW - 1) - 1) / s0 + 1)) * ggml_type_size(dst->type);
+        offset = ggml_nbytes(dst);
+        // std::cout << "\n $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ IC == 1 offset:" << (KH * KW * ((ne10 + 2 * p0 - d0 * (KW - 1) - 1) / s0 + 1)) << "\n ";
+        // std::cout << "\n $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ IC == 1 ggml_nelements(dst):" << ggml_nelements(dst) << "\n ";
+        ACL_CHECK(aclrtMemcpyAsync(dst->data, offset, tmp_permute_buffer + offset,
+                                offset, ACL_MEMCPY_DEVICE_TO_DEVICE,
+                                ctx.stream()));
+        // aclrtMemcpy(acl_dst_buffer, offset, tmp_permute_buffer + offset, offset, ACL_MEMCPY_DEVICE_TO_DEVICE);
     }
-    
-    /* cout perpute results */ 
-    printf("\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ NPU------------permute (fp32)\n");
-    size_t n_elem = 512;
-    float * output2 = new float[n_elem];
-    aclrtMemcpy(output2, n_elem*sizeof(float), acl_dst_buffer, n_elem*sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
-    for(int i = 0; i < n_elem; i++) {
-        printf("%f,", output2[i]);
-        if ((i+1)% 25 == 0)
-        {
-            printf("\n");
-        }
-    }
-    printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 
-    // create cann tensor
-    aclTensor* acl_dst_cpy =
-        ggml_cann_create_tensor(dst, dst_ne, dst_nb, GGML_MAX_DIMS - 1);
+    // /* cout perpute results */ 
+    // printf("\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ NPU------------ dst (fp32)\n");
+    // size_t n_elem = 3840;
+    // float * output2 = new float[n_elem];
+    // aclrtMemcpy(output2, n_elem*sizeof(float), acl_dst_buffer, n_elem*sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+    // for(int i = 0; i < n_elem; i++) {
+    //     printf("%f,", output2[i]);
+    //     if ((i+1)% 1280 == 0)
+    //     {
+    //         printf("\n");
+    //     }
+    // }
+    // printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 
-    uint64_t inplaceCpyWorkspaceSize = 0;
-    aclOpExecutor* inplaceCpyExecutor;
-    void* inplaceCpyWorkspaceAddr = nullptr;
-    ACL_CHECK(aclnnInplaceCopyGetWorkspaceSize(acl_dst_cpy, acl_dst_tensor, &inplaceCpyWorkspaceSize, &inplaceCpyExecutor));
-    if (inplaceCpyWorkspaceSize > 0) {
-        aclrtMalloc(&inplaceCpyWorkspaceAddr, inplaceCpyWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    }
-    ACL_CHECK(aclnnInplaceCopy(inplaceCpyWorkspaceAddr, inplaceCpyWorkspaceSize, inplaceCpyExecutor, ctx.stream()));
+    // // create cann tensor
+    // // dst->data = acl_dst_buffer;
+    // aclTensor* acl_dst_cpy =
+    //     ggml_cann_create_tensor(dst, dst_ne, dst_nb, GGML_MAX_DIMS - 1);
+
+
+
+    // aclnn_inplaceCopy(ctx, acl_dst_tensor, acl_dst_cpy);
+
+
+
+    // // uint64_t inplaceCpyWorkspaceSize = 0;
+    // // aclOpExecutor* inplaceCpyExecutor;
+    // // void* inplaceCpyWorkspaceAddr = nullptr;
+    // // ACL_CHECK(aclnnInplaceCopyGetWorkspaceSize(acl_dst_cpy, acl_dst_tensor, &inplaceCpyWorkspaceSize, &inplaceCpyExecutor));
+    // // // if (inplaceCpyWorkspaceSize > 0) {
+    // // //     aclrtMalloc(&inplaceCpyWorkspaceAddr, inplaceCpyWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    // // // }
+
+    // // ggml_cann_pool_alloc inplaceCpy_workspace_allocator(ctx.pool());
+    // // if (inplaceCpyWorkspaceSize > 0) {
+    // //     inplaceCpy_workspace_allocator.alloc(inplaceCpyWorkspaceSize);
+    // //     inplaceCpyWorkspaceAddr = inplaceCpy_workspace_allocator.get();
+    // // }
+
+    // // ACL_CHECK(aclnnInplaceCopy(inplaceCpyWorkspaceAddr, inplaceCpyWorkspaceSize, inplaceCpyExecutor, ctx.stream()));
 
     // release
     ACL_CHECK(aclDestroyTensor(acl_src1));
@@ -1738,7 +1765,7 @@ void ggml_cann_im2col_1d(ggml_backend_cann_context& ctx, ggml_tensor* dst) {
     ACL_CHECK(aclDestroyTensor(tmp_cast_tensor));
     ACL_CHECK(aclDestroyTensor(tmp_permute_tensor));
     ACL_CHECK(aclDestroyTensor(acl_dst_tensor));
-    ACL_CHECK(aclDestroyTensor(acl_dst_cpy));
+    // ACL_CHECK(aclDestroyTensor(acl_dst_cpy));
     ACL_CHECK(aclDestroyIntArray(kernel_size));
     ACL_CHECK(aclDestroyIntArray(dilations));
     ACL_CHECK(aclDestroyIntArray(paddings));
